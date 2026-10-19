@@ -114,8 +114,24 @@ button.os-tag{cursor:pointer}
 .sim-slider{width:100%;accent-color:var(--accent);cursor:pointer}
 .sim-output{background:var(--surface-2);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;justify-content:space-between;align-items:center}
 .goal-card{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.goal-actions{display:flex;align-items:center;gap:6px}
 .topup-btn{font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:7px;background:var(--emerald-soft);color:var(--emerald)}
 .topup-btn:disabled{opacity:.35;cursor:default}
+.goal-delete-btn{width:26px;height:26px;border-radius:7px;color:var(--text-dim);font-size:16px;line-height:1}
+.goal-delete-btn:hover{background:var(--coral-soft);color:var(--coral)}
+.goal-delete-overlay{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.65)}
+.goal-delete-overlay[hidden]{display:none}
+.goal-delete-card{width:min(100%,340px);padding:18px;background:var(--surface-1);border:1px solid var(--border-highlight);border-radius:14px;box-shadow:var(--shadow)}
+.goal-delete-title{font-size:16px;font-weight:700}
+.goal-delete-copy{margin-top:6px;color:var(--text-muted);font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.goal-delete-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.goal-delete-actions button{min-width:78px;height:36px;padding:0 12px;border-radius:9px;font-size:13px;font-weight:600;transition:transform .15s,opacity .15s,background-color .15s}
+.goal-delete-actions button:active:not(:disabled){transform:scale(.97)}
+.goal-delete-cancel{background:var(--surface-2);color:var(--text-main);border:1px solid var(--border)}
+.goal-delete-cancel:hover{background:var(--surface-3)}
+.goal-delete-confirm{background:var(--coral-soft);color:var(--coral)}
+.goal-delete-confirm:hover{background:var(--coral);color:#fff}
+.goal-delete-actions button:disabled{opacity:.55;cursor:wait}
 .link-btn{font-size:12px;font-weight:600;color:var(--emerald)}
 .receipt-paper{background:var(--receipt-bg);color:var(--receipt-ink);font-family:var(--font-mono);padding:24px 20px;border-radius:8px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px}
 #tab-struk:not([hidden]) .receipt-paper{animation:print 1.5s steps(30,end) backwards}
@@ -387,6 +403,7 @@ body.locked .auth{display:grid}
 
       <section class="tp-view" id="tpKeypad">
         <div class="tp-top-bar"><span class="tp-mode-pill" id="tpModeBadge">New Expense</span><button class="tp-close-btn" type="button" id="tpCloseBtn" aria-label="Close">✕</button></div>
+        <input class="tp-note" id="tpGoalName" type="text" maxlength="40" placeholder="What are you saving for? (e.g. Sepatu futsal)" autocomplete="off" style="margin-bottom:12px" hidden>
         <div class="tp-display"><p class="tp-amount num" id="tpAmount">Rp 0</p><p class="tp-sub-hint num" id="tpSubHint" hidden></p></div>
         <div class="quick-chips" id="quickChips"></div>
         <div class="tp-keys">
@@ -436,6 +453,17 @@ body.locked .auth{display:grid}
       </section>
     </div>
   </div>
+</div>
+
+<div class="goal-delete-overlay" id="goalDeleteOverlay" hidden>
+  <section class="goal-delete-card" role="alertdialog" aria-modal="true" aria-labelledby="goalDeleteTitle" aria-describedby="goalDeleteCopy">
+    <h2 class="goal-delete-title" id="goalDeleteTitle">Delete goal?</h2>
+    <p class="goal-delete-copy" id="goalDeleteCopy">Delete this goal?</p>
+    <div class="goal-delete-actions">
+      <button class="goal-delete-cancel" id="goalDeleteCancel" type="button">Cancel</button>
+      <button class="goal-delete-confirm" id="goalDeleteConfirm" type="button">Delete</button>
+    </div>
+  </section>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -488,6 +516,58 @@ body.locked .auth{display:grid}
 
   var toastTimer;
   function toast(msg) { var t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2600); }
+  var goalDeleteOverlay = $("goalDeleteOverlay"), goalDeleteId = null, goalDeleteBusy = false, goalDeleteReturnFocus = null;
+  function closeGoalDelete() {
+    if (goalDeleteBusy) return;
+    goalDeleteOverlay.hidden = true;
+    document.body.classList.remove("modal-open");
+    var target = goalDeleteReturnFocus && goalDeleteReturnFocus.isConnected ? goalDeleteReturnFocus : $("addGoalBtn");
+    if (target) target.focus();
+    goalDeleteId = null;
+  }
+  function openGoalDelete(goal, trigger) {
+    goalDeleteId = goal.id;
+    goalDeleteReturnFocus = trigger;
+    $("goalDeleteCopy").textContent = 'Delete "' + goal.name + '"?';
+    goalDeleteOverlay.hidden = false;
+    document.body.classList.add("modal-open");
+    $("goalDeleteCancel").focus();
+  }
+  document.addEventListener("keydown", function (e) {
+    if (goalDeleteOverlay.hidden) return;
+    if (e.key === "Escape") { e.preventDefault(); closeGoalDelete(); }
+    if (e.key === "Tab") {
+      var first = $("goalDeleteCancel"), last = $("goalDeleteConfirm");
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+  $("goalDeleteCancel").addEventListener("click", closeGoalDelete);
+  goalDeleteOverlay.addEventListener("click", function (e) { if (e.target === goalDeleteOverlay) closeGoalDelete(); });
+  $("goalDeleteConfirm").addEventListener("click", function () {
+    if (!goalDeleteId || goalDeleteBusy) return;
+    var id = goalDeleteId, button = $("goalDeleteConfirm");
+    goalDeleteBusy = true;
+    button.disabled = true;
+    $("goalDeleteCancel").disabled = true;
+    sb.from("goals").delete().eq("id", id).select("id").then(function (r) {
+      if (r.error) throw r.error;
+      if (!r.data || !r.data.length) throw new Error("Goal deletion was rejected");
+      state.goals = state.goals.filter(function (g) { return g.id !== id; });
+      renderAll();
+      goalDeleteBusy = false;
+      button.disabled = false;
+      $("goalDeleteCancel").disabled = false;
+      closeGoalDelete();
+      toast("Goal deleted");
+    }).catch(function (e) {
+      console.error("goal deletion failed", e);
+      goalDeleteBusy = false;
+      button.disabled = false;
+      $("goalDeleteCancel").disabled = false;
+      toast("Couldn't delete goal. Check your connection.");
+    });
+  });
 
   function tween(el, to, fmt, dur) {
     fmt = fmt || rp;
@@ -612,7 +692,7 @@ body.locked .auth{display:grid}
         el = document.createElement("div");
         el.className = "goal-card enter";
         el.setAttribute("data-gid", g.id);
-        el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><strong style="font-size:13px">' + esc(g.name) + '</strong><button class="topup-btn num" type="button" data-goal-id="' + g.id + '">+Rp 20k</button></div><div class="meter"><div class="meter-fill"></div></div><div class="num" style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted)"><span></span><span></span></div>';
+        el.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><strong style="font-size:13px;min-width:0;overflow-wrap:anywhere">' + esc(g.name) + '</strong><div class="goal-actions"><button class="topup-btn" type="button" data-goal-id="' + g.id + '">Add amount</button><button class="goal-delete-btn" type="button" data-delete-goal="' + g.id + '" aria-label="Delete ' + esc(g.name) + '" title="Delete goal">×</button></div></div><div class="meter"><div class="meter-fill"></div></div><div class="num" style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-muted)"><span></span><span></span></div>';
         list.appendChild(el);
       }
       el.querySelector(".meter-fill").style.setProperty("--progress", pct + "%");
@@ -760,25 +840,19 @@ body.locked .auth{display:grid}
   $("searchInput").addEventListener("input", function (e) { state.search = e.target.value; renderAll(); });
 
   $("goalsList").addEventListener("click", function (e) {
+    var del = e.target.closest("[data-delete-goal]");
+    if (del) {
+      var goalToDelete = state.goals.find(function (g) { return g.id === del.getAttribute("data-delete-goal"); });
+      if (goalToDelete) openGoalDelete(goalToDelete, del);
+      return;
+    }
     var b = e.target.closest("[data-goal-id]");
     if (!b) return;
     var g = state.goals.find(function (x) { return x.id === b.getAttribute("data-goal-id"); });
     if (!g || g.saved >= g.target) return;
-    g.saved = Math.min(g.target, g.saved + 20000);
-    renderAll();
-    persist(sb.from("goals").update({ saved: g.saved }).eq("id", g.id));
+    activeGoalId = g.id;
+    openCalculator("topup");
   });
-  $("addGoalBtn").addEventListener("click", function () {
-    var name = prompt("What are you saving up for? (e.g., Sepatu Futsal, Headset):");
-    if (!name || !name.trim()) return;
-    var target = Number(String(prompt("Target amount in Rp:", "350000") || "").replace(/[^0-9]/g, ""));
-    if (!(target > 0)) return;
-    var g = { id: uuid(), name: name.trim().slice(0, 40), saved: 0, target: Math.min(target, 9999999999) };
-    state.goals.push(g);
-    renderAll();
-    persist(sb.from("goals").insert({ id: g.id, name: g.name, saved: 0, target: g.target }));
-  });
-
   $("txList").addEventListener("click", function (e) {
     var del = e.target.closest("[data-del-id]");
     if (del) {
@@ -820,10 +894,10 @@ body.locked .auth{display:grid}
   /* ==================== CALCULATOR SHEET ==================== */
   var root = $("tp"), overlay = $("tpOverlay"), modeBadge = $("tpModeBadge"), subHint = $("tpSubHint"), quickChips = $("quickChips");
   var keypad = $("tpKeypad"), category = $("tpCategory"), incomeCategory = $("incomeCategory"), investCategory = $("investCategory");
-  var amountEl = $("tpAmount"), reviewBtn = $("tpReview"), MAX_DIGITS = 10;
+  var amountEl = $("tpAmount"), reviewBtn = $("tpReview"), goalName = $("tpGoalName"), MAX_DIGITS = 10;
   var confirmBtns = [$("tpConfirm"), $("incomeConfirm"), $("investConfirm")];
-  var digits = "", selected = null, mode = "transaction", closing = false, editingId = null;
-  var BADGES = { transaction: "New Expense", income: "Add Income", investment: "Add Investment" };
+  var digits = "", selected = null, mode = "transaction", closing = false, editingId = null, activeGoalId = null;
+  var BADGES = { transaction: "New Expense", income: "Add Income", investment: "Add Investment", goal: "New goal", topup: "Add to goal" };
 
   function renderChips() {
     var big = mode === "budget" || mode === "balance";
@@ -834,12 +908,21 @@ body.locked .auth{display:grid}
     amountEl.textContent = "Rp " + (digits ? group(digits) : "0");
     if (digits) { amountEl.classList.remove("bump"); void amountEl.offsetWidth; amountEl.classList.add("bump"); }
     amountEl.style.setProperty("--fs", digits.length > 9 ? "26px" : digits.length > 7 ? "30px" : "36px");
-    reviewBtn.disabled = !digits || Number(digits) <= 0;
+    var goal = mode === "topup" && state.goals.find(function (g) { return g.id === activeGoalId; });
+    var remaining = goal ? Math.max(0, goal.target - goal.saved) : 0;
+    if (mode === "topup") {
+      subHint.textContent = "Remaining: " + rp(remaining);
+      subHint.hidden = false;
+    }
+    reviewBtn.disabled = !digits || Number(digits) <= 0 ||
+      (mode === "goal" && !goalName.value.trim()) ||
+      (mode === "topup" && (!goal || Number(digits) > remaining));
   }
   function openCalculator(m) {
     if (closing) return;
     mode = m;
     renderChips();
+    goalName.hidden = m !== "goal";
     var weekly = state.budgetPeriod === "weekly";
     if (m === "budget") {
       modeBadge.textContent = weekly ? "Set Weekly Limit" : "Set Monthly Limit";
@@ -849,6 +932,13 @@ body.locked .auth{display:grid}
       modeBadge.textContent = "Set Cash Balance";
       subHint.textContent = "Current: " + rp(lastLiquid);
       subHint.hidden = false; reviewBtn.textContent = "Save Balance";
+    } else if (m === "goal") {
+      modeBadge.textContent = BADGES[m]; subHint.hidden = true; reviewBtn.textContent = "Save goal";
+    } else if (m === "topup") {
+      var goal = state.goals.find(function (g) { return g.id === activeGoalId; });
+      if (!goal || goal.saved >= goal.target) return;
+      modeBadge.textContent = BADGES[m]; reviewBtn.textContent = "Add to goal";
+      subHint.textContent = "Remaining: " + rp(goal.target - goal.saved); subHint.hidden = false;
     } else {
       modeBadge.textContent = BADGES[m]; subHint.hidden = true; reviewBtn.textContent = "Choose Category";
     }
@@ -867,8 +957,8 @@ body.locked .auth{display:grid}
     closing = false;
     overlay.classList.remove("closing");
     root.parentElement.style.transform = ""; root.parentElement.style.transition = "";
-    digits = ""; selected = null; editingId = null;
-    ["tpNote", "incomeDescription", "investDescription"].forEach(function (id) { $(id).value = ""; });
+    digits = ""; selected = null; editingId = null; activeGoalId = null;
+    ["tpNote", "incomeDescription", "investDescription", "tpGoalName"].forEach(function (id) { $(id).value = ""; });
     root.querySelectorAll(".tp-cat").forEach(function (b) { b.setAttribute("aria-pressed", "false"); });
     confirmBtns.forEach(function (b) { b.disabled = true; });
     renderKeypad(); showKeypad();
@@ -883,6 +973,35 @@ body.locked .auth{display:grid}
   function primaryAction() {
     if (!digits || Number(digits) <= 0) return;
     var n = Number(digits);
+    if (mode === "goal") {
+      var name = goalName.value.trim();
+      if (!name) return;
+      var g = { id: uuid(), name: name.slice(0, 40), saved: 0, target: n };
+      state.goals.push(g);
+      renderAll();
+      closeSheet();
+      persist(sb.from("goals").insert({ id: g.id, name: g.name, saved: 0, target: g.target }));
+      toast("Goal saved");
+      return;
+    }
+    if (mode === "topup") {
+      var goal = state.goals.find(function (g) { return g.id === activeGoalId; });
+      if (!goal || n > goal.target - goal.saved) {
+        toast("Amount exceeds the remaining goal amount");
+        return;
+      }
+      var previousSaved = goal.saved, newSaved = previousSaved + n;
+      goal.saved = newSaved;
+      renderAll();
+      closeSheet();
+      persist(sb.from("goals").update({ saved: newSaved }).eq("id", goal.id).eq("saved", previousSaved).gte("target", newSaved).select("id").then(function (r) {
+        if (r.error) throw r.error;
+        if (!r.data || !r.data.length) throw new Error("Goal amount changed or exceeded its target");
+        return r;
+      }));
+      toast("Goal updated");
+      return;
+    }
     if (mode === "budget") {
       var weekly = state.budgetPeriod === "weekly";
       if (weekly) state.weeklyBudget = n; else state.monthlyBudget = n;
@@ -941,6 +1060,11 @@ body.locked .auth{display:grid}
   $("editBudgetBtn").addEventListener("click", function () { openCalculator("budget"); });
   $("budgetTotalClick").addEventListener("click", function () { openCalculator("budget"); });
   $("liquidBadge").addEventListener("click", function () { openCalculator("balance"); });
+  $("addGoalBtn").addEventListener("click", function () { openCalculator("goal"); });
+  goalName.addEventListener("input", renderKeypad);
+  goalName.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); if (!reviewBtn.disabled) primaryAction(); }
+  });
   $("tpCloseBtn").addEventListener("click", closeSheet);
   overlay.addEventListener("click", function (e) { if (e.target === overlay) closeSheet(); });
   root.querySelectorAll(".tp-key").forEach(function (b) { b.addEventListener("click", function () { press(b.dataset.key); }); });
