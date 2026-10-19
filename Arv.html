@@ -1032,6 +1032,13 @@ body.modal-open { overflow: hidden; }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+@media (max-width: 480px) {
+  #catGrid,
+  .portfolio-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 </style>
 </head>
 
@@ -1196,7 +1203,7 @@ body.modal-open { overflow: hidden; }
         </div>
         <strong class="num" style="font-size:18px;color:var(--indigo)" id="futureInvestTotal">Rp 124.500</strong>
       </div>
-      <div class="grid-2">
+      <div class="grid-2 portfolio-stats">
         <div class="cat-stat-box">
           <span class="cat-stat-left"><span class="dot" style="--c:var(--indigo)"></span>Stocks</span>
           <strong class="num" id="stocksTotalBox">Rp 100.000</strong>
